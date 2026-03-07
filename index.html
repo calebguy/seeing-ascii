@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Seeing ASCII</title>
+  <title>seeing-ascii</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -16,46 +16,7 @@
       width: 100vw;
     }
 
-    #start-screen {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      height: 100vh;
-      gap: 24px;
-    }
-
-    #start-screen h1 {
-      font-size: 2rem;
-      color: #e0e0e8;
-      letter-spacing: 4px;
-    }
-
-    #start-screen p {
-      color: #666;
-      font-size: 0.9rem;
-    }
-
-    #start-btn {
-      background: none;
-      border: 1px solid #444;
-      color: #c8c8d0;
-      font-family: monospace;
-      font-size: 1.1rem;
-      padding: 12px 32px;
-      cursor: pointer;
-      letter-spacing: 2px;
-      transition: all 0.2s;
-    }
-
-    #start-btn:hover {
-      border-color: #888;
-      color: #fff;
-      background: #1a1a2f;
-    }
-
     #ascii-container {
-      display: none;
       width: 100vw;
       height: 100vh;
       position: relative;
@@ -67,38 +28,38 @@
       height: 100vh;
     }
 
-    #controls {
+    #slider-bar {
       position: fixed;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      display: flex;
-      gap: 16px;
-      align-items: center;
+      bottom: 0;
+      left: 0;
+      width: 100%;
       z-index: 10;
-      background: rgba(10, 10, 15, 0.85);
-      padding: 8px 20px;
-      border-radius: 8px;
-      border: 1px solid #222;
       opacity: 0;
       transition: opacity 0.3s;
+      cursor: pointer;
     }
 
-    #ascii-container:hover #controls {
+    #ascii-container:hover #slider-bar:not(.hidden) {
       opacity: 1;
     }
 
-    #controls label {
-      font-size: 0.75rem;
-      color: #888;
-      display: flex;
-      align-items: center;
-      gap: 6px;
+    #slider-bar.hidden {
+      opacity: 0 !important;
+      pointer-events: none;
     }
 
-    #controls input[type="range"] {
-      width: 80px;
-      accent-color: #666;
+    @media (max-width: 768px), (hover: none) {
+      #slider-bar {
+        display: none;
+      }
+    }
+
+    #slider-canvas {
+      width: 100%;
+      height: 80px;
+      cursor: pointer;
+      display: block;
+      border-top: 1px solid #222;
     }
 
 
@@ -111,26 +72,39 @@
       z-index: 10;
     }
 
+    #hint {
+      position: fixed;
+      bottom: 88px;
+      left: 12px;
+      font-size: 0.7rem;
+      color: #fff;
+      z-index: 11;
+      font-family: monospace;
+      pointer-events: none;
+      transition: bottom 0.3s;
+    }
+
+    #hint.bottom {
+      bottom: 8px;
+    }
+
+    @media (max-width: 768px), (hover: none) {
+      #hint { display: none; }
+    }
+
     video { display: none; }
     #sample-canvas { display: none; }
   </style>
 </head>
 <body>
 
-<div id="start-screen">
-  <h1>SEEING ASCII</h1>
-  <p>live camera to ascii conversion</p>
-  <button id="start-btn">[ START CAMERA ]</button>
-</div>
-
 <div id="ascii-container">
   <canvas id="ascii-canvas"></canvas>
-  <div id="controls">
-    <label>resolution
-      <input type="range" id="res-slider" min="40" max="220" value="120">
-    </label>
+  <div id="slider-bar">
+    <canvas id="slider-canvas"></canvas>
   </div>
   <div id="fps-counter"></div>
+  <div id="hint">h to toggle res</div>
 </div>
 
 <video id="video" autoplay playsinline></video>
@@ -144,19 +118,25 @@ const sampleCanvas = document.getElementById('sample-canvas');
 const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
 const asciiCanvas = document.getElementById('ascii-canvas');
 const outCtx = asciiCanvas.getContext('2d');
-const startScreen = document.getElementById('start-screen');
-const asciiContainer = document.getElementById('ascii-container');
-const startBtn = document.getElementById('start-btn');
-const resSlider = document.getElementById('res-slider');
 const fpsCounter = document.getElementById('fps-counter');
+const hint = document.getElementById('hint');
+const sliderCanvas = document.getElementById('slider-canvas');
+const sliderCtx = sliderCanvas.getContext('2d');
 
-let cols = 120;
+const isMobile = window.matchMedia('(max-width: 768px), (hover: none)').matches;
+let cols = isMobile ? 170 : 120;
 let mirror = true;
 let running = false;
+let sliderHidden = isMobile;
+let sliderDragging = false;
 let frameCount = 0;
 let lastFpsTime = performance.now();
 
-// Measure character dimensions for the chosen font
+if (isMobile) {
+  document.getElementById('slider-bar').classList.add('hidden');
+  hint.classList.add('bottom');
+}
+
 const FONT_FAMILY = 'Courier New, Courier, monospace';
 let charW, charH, fontSize;
 
@@ -164,27 +144,170 @@ function measureFont(size) {
   fontSize = size;
   outCtx.font = `${fontSize}px ${FONT_FAMILY}`;
   charW = outCtx.measureText('M').width;
-  charH = fontSize; // line-height = font size
+  charH = fontSize;
 }
 
-resSlider.addEventListener('input', () => { cols = parseInt(resSlider.value); });
+// Canvas slider
+const sliderSampleCanvas = document.createElement('canvas');
+const sliderSampleCtx = sliderSampleCanvas.getContext('2d', { willReadFrequently: true });
+const sliderMin = 40;
+const sliderMax = 300;
+const STRIP_COUNT = 24;
 
-startBtn.addEventListener('click', async () => {
+function xToCols(x, barW) {
+  return Math.round(sliderMin + Math.max(0, Math.min(1, x / barW)) * (sliderMax - sliderMin));
+}
+
+function colsToX(c, barW) {
+  return ((c - sliderMin) / (sliderMax - sliderMin)) * barW;
+}
+
+function renderSlider() {
+  if (!running || !video.videoWidth) return;
+  const vw = video.videoWidth;
+  const vh = video.videoHeight;
+  const videoAspect = vw / vh;
+
+  const barW = sliderCanvas.clientWidth * devicePixelRatio;
+  const barH = sliderCanvas.clientHeight * devicePixelRatio;
+  if (barW <= 0 || barH <= 0) return;
+
+  if (sliderCanvas.width !== barW || sliderCanvas.height !== barH) {
+    sliderCanvas.width = barW;
+    sliderCanvas.height = barH;
+  }
+
+  sliderCtx.fillStyle = '#0a0a0f';
+  sliderCtx.fillRect(0, 0, barW, barH);
+
+  const fullScreenW = window.innerWidth * devicePixelRatio;
+  const fullScreenH = window.innerHeight * devicePixelRatio;
+  const stripW = barW / STRIP_COUNT;
+
+  for (let s = 0; s < STRIP_COUNT; s++) {
+    const t = s / (STRIP_COUNT - 1);
+    const resCols = Math.round(sliderMin + t * (sliderMax - sliderMin));
+
+    const fs = Math.max(3, Math.floor(fullScreenW / resCols / 0.6));
+    sliderCtx.font = `${fs}px ${FONT_FAMILY}`;
+    const cw = sliderCtx.measureText('M').width;
+    const ch = fs;
+    const cellAsp = cw / ch;
+
+    const stripLeft = Math.floor(s * stripW);
+    const stripRight = Math.floor((s + 1) * stripW);
+    const sw = stripRight - stripLeft;
+    const gridCols = Math.max(1, Math.ceil(sw / cw));
+    const gridRows = Math.max(1, Math.ceil(barH / ch));
+
+    const fullGridW = Math.ceil(fullScreenW / cw);
+    let fgW = fullGridW;
+    let fgH = Math.ceil(fullGridW * cellAsp / videoAspect);
+    if (fgH * ch < fullScreenH) {
+      fgH = Math.ceil(fullScreenH / ch);
+      fgW = Math.ceil(fgH * videoAspect / cellAsp);
+    }
+
+    const fullOffsetX = (fullScreenW - fgW * cw) / 2;
+    const fullOffsetY = (fullScreenH - fgH * ch) / 2;
+    const barTopScreen = fullScreenH - barH;
+
+    const startCol = Math.floor((stripLeft - fullOffsetX) / cw);
+    const startRow = Math.floor((barTopScreen - fullOffsetY) / ch);
+
+    const vidX0 = Math.max(0, startCol / fgW);
+    const vidY0 = Math.max(0, startRow / fgH);
+    const vidX1 = Math.min(1, (startCol + gridCols) / fgW);
+    const vidY1 = Math.min(1, (startRow + gridRows) / fgH);
+
+    sliderSampleCanvas.width = gridCols;
+    sliderSampleCanvas.height = gridRows;
+    if (mirror) {
+      sliderSampleCtx.translate(gridCols, 0);
+      sliderSampleCtx.scale(-1, 1);
+      sliderSampleCtx.drawImage(video,
+        (1 - vidX1) * vw, vidY0 * vh, (vidX1 - vidX0) * vw, (vidY1 - vidY0) * vh,
+        0, 0, gridCols, gridRows);
+      sliderSampleCtx.setTransform(1, 0, 0, 1, 0, 0);
+    } else {
+      sliderSampleCtx.drawImage(video,
+        vidX0 * vw, vidY0 * vh, (vidX1 - vidX0) * vw, (vidY1 - vidY0) * vh,
+        0, 0, gridCols, gridRows);
+    }
+
+    const imgData = sliderSampleCtx.getImageData(0, 0, gridCols, gridRows);
+    const data = imgData.data;
+    const len = charset.length;
+
+    sliderCtx.save();
+    sliderCtx.beginPath();
+    sliderCtx.rect(stripLeft, 0, sw, barH);
+    sliderCtx.clip();
+    sliderCtx.font = `${fs}px ${FONT_FAMILY}`;
+    sliderCtx.textBaseline = 'top';
+
+    for (let y = 0; y < gridRows; y++) {
+      const py = y * ch;
+      if (py > barH) break;
+      for (let x = 0; x < gridCols; x++) {
+        const px = stripLeft + x * cw;
+        if (px > stripRight) break;
+        const idx = (y * gridCols + x) * 4;
+        const r = data[idx], g = data[idx+1], b = data[idx+2];
+        const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        const ci = Math.floor(brightness * (len - 1));
+        const c = charset[ci];
+        if (c === ' ') continue;
+        sliderCtx.fillStyle = `rgb(${r},${g},${b})`;
+        sliderCtx.fillText(c, px, py);
+      }
+    }
+    sliderCtx.restore();
+  }
+
+  // Draw thumb line
+  const thumbX = colsToX(cols, barW);
+  sliderCtx.fillStyle = 'rgba(255,255,255,0.6)';
+  sliderCtx.fillRect(thumbX - 1, 0, 2, barH);
+}
+
+// Slider interaction
+function handleSliderInput(clientX) {
+  const rect = sliderCanvas.getBoundingClientRect();
+  const x = (clientX - rect.left) * devicePixelRatio;
+  cols = xToCols(x, sliderCanvas.width);
+}
+
+sliderCanvas.addEventListener('mousedown', (e) => { sliderDragging = true; handleSliderInput(e.clientX); });
+window.addEventListener('mousemove', (e) => { if (sliderDragging) handleSliderInput(e.clientX); });
+window.addEventListener('mouseup', () => { sliderDragging = false; });
+sliderCanvas.addEventListener('touchstart', (e) => { sliderDragging = true; handleSliderInput(e.touches[0].clientX); }, { passive: true });
+window.addEventListener('touchmove', (e) => { if (sliderDragging) handleSliderInput(e.touches[0].clientX); }, { passive: true });
+window.addEventListener('touchend', () => { sliderDragging = false; });
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'h' || e.key === 'H') {
+    sliderHidden = !sliderHidden;
+    document.getElementById('slider-bar').classList.toggle('hidden', sliderHidden);
+    hint.classList.toggle('bottom', sliderHidden);
+  }
+});
+
+async function startCamera() {
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
     });
     video.srcObject = stream;
     await video.play();
-    startScreen.style.display = 'none';
-    asciiContainer.style.display = 'block';
     running = true;
     requestAnimationFrame(render);
   } catch (err) {
-    startBtn.textContent = '[ CAMERA ACCESS DENIED ]';
-    console.error(err);
+    console.error('Camera access denied:', err);
   }
-});
+}
+
+startCamera();
 
 function render() {
   if (!running) return;
@@ -195,38 +318,27 @@ function render() {
 
   const screenW = window.innerWidth * devicePixelRatio;
   const screenH = window.innerHeight * devicePixelRatio;
-
   const videoAspect = vw / vh;
 
-  // Font size from resolution slider (cols = target columns across screen width)
   const targetFontSize = Math.max(4, Math.floor(screenW / cols / 0.6));
   measureFont(targetFontSize);
 
-  // Use actual measured char dimensions for aspect correction
   const cellAspect = charW / charH;
 
-  // "Cover" mode: pick whichever fit covers both dimensions
-  // Option A: fill width exactly, see if height is covered
   const wA = Math.ceil(screenW / charW);
   const hA = Math.ceil(wA * cellAspect / videoAspect);
-  // Option B: fill height exactly, see if width is covered
   const hB = Math.ceil(screenH / charH);
   const wB = Math.ceil(hB * videoAspect / cellAspect);
 
   let w, h;
-  if (hA * charH >= screenH) {
-    w = wA; h = hA;
-  } else {
-    w = wB; h = hB;
-  }
+  if (hA * charH >= screenH) { w = wA; h = hA; }
+  else { w = wB; h = hB; }
 
-  // Set output canvas to full resolution
   if (asciiCanvas.width !== screenW || asciiCanvas.height !== screenH) {
     asciiCanvas.width = screenW;
     asciiCanvas.height = screenH;
   }
 
-  // Sample the video at grid resolution
   sampleCanvas.width = w;
   sampleCanvas.height = h;
   if (mirror) {
@@ -240,13 +352,11 @@ function render() {
   const data = imageData.data;
   const len = charset.length;
 
-  // Clear and draw
   outCtx.fillStyle = '#0a0a0f';
   outCtx.fillRect(0, 0, screenW, screenH);
   outCtx.font = `${fontSize}px ${FONT_FAMILY}`;
   outCtx.textBaseline = 'top';
 
-  // Center both axes, clip overflow
   const offsetX = (screenW - w * charW) / 2;
   const offsetY = (screenH - h * charH) / 2;
 
@@ -268,7 +378,28 @@ function render() {
     }
   }
 
-  // FPS counter
+  // Update hint color
+  if (hint && !isMobile) {
+    const hintRect = hint.getBoundingClientRect();
+    const sx = Math.floor(hintRect.left * devicePixelRatio);
+    const sy = Math.floor(hintRect.top * devicePixelRatio);
+    const sw2 = Math.floor(hintRect.width * devicePixelRatio);
+    const sh2 = Math.floor(hintRect.height * devicePixelRatio);
+    if (sw2 > 0 && sh2 > 0 && sx >= 0 && sy >= 0 && sx + sw2 <= screenW && sy + sh2 <= screenH) {
+      const hintData = outCtx.getImageData(sx, sy, sw2, sh2).data;
+      let rSum = 0, gSum = 0, bSum = 0;
+      const pxCount = sw2 * sh2;
+      for (let p = 0; p < hintData.length; p += 4) {
+        rSum += hintData[p]; gSum += hintData[p+1]; bSum += hintData[p+2];
+      }
+      const avgBrightness = (0.299 * rSum + 0.587 * gSum + 0.114 * bSum) / pxCount / 255;
+      hint.style.color = avgBrightness > 0.5 ? '#000' : '#fff';
+    }
+  }
+
+  // Render slider every frame
+  if (!sliderHidden) renderSlider();
+
   frameCount++;
   const now = performance.now();
   if (now - lastFpsTime >= 1000) {
