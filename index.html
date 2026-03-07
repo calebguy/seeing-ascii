@@ -286,6 +286,9 @@ window.addEventListener('touchmove', (e) => { if (sliderDragging) handleSliderIn
 window.addEventListener('touchend', () => { sliderDragging = false; });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'c' || e.key === 'C') {
+    toggleCamera();
+  }
   if (e.key === 'h' || e.key === 'H') {
     sliderHidden = !sliderHidden;
     document.getElementById('slider-bar').classList.toggle('hidden', sliderHidden);
@@ -293,19 +296,45 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
+let facingMode = 'user';
+
 async function startCamera() {
+  // Stop existing tracks
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+  }
   try {
     const stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } }
+      video: { facingMode: facingMode, width: { ideal: 1280 }, height: { ideal: 720 } }
     });
     video.srcObject = stream;
     await video.play();
-    running = true;
-    requestAnimationFrame(render);
+    mirror = (facingMode === 'user');
+    if (!running) {
+      running = true;
+      requestAnimationFrame(render);
+    }
   } catch (err) {
     console.error('Camera access denied:', err);
   }
 }
+
+function toggleCamera() {
+  facingMode = (facingMode === 'user') ? 'environment' : 'user';
+  startCamera();
+}
+
+// Double-tap to toggle camera on mobile
+let lastTap = 0;
+document.addEventListener('touchend', (e) => {
+  if (sliderDragging) return;
+  const now = Date.now();
+  if (now - lastTap < 300) {
+    e.preventDefault();
+    toggleCamera();
+  }
+  lastTap = now;
+});
 
 startCamera();
 
