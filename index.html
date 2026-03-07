@@ -346,16 +346,29 @@ function toggleCamera() {
   startCamera();
 }
 
-// Double-tap to toggle camera on mobile
+// Double-tap to toggle camera on mobile (suppressed after pinch)
 let lastTap = 0;
+let wasPinching = false;
+
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length >= 2) wasPinching = true;
+}, { passive: true });
+
 document.addEventListener('touchend', (e) => {
-  if (sliderDragging) return;
+  if (e.touches.length === 0 && wasPinching) {
+    wasPinching = false;
+    lastTap = 0;
+    return;
+  }
+  if (sliderDragging || e.touches.length > 0) return;
   const now = Date.now();
   if (now - lastTap < 300) {
     e.preventDefault();
     toggleCamera();
+    lastTap = 0;
+  } else {
+    lastTap = now;
   }
-  lastTap = now;
 });
 
 startCamera();
