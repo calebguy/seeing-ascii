@@ -109,7 +109,7 @@ let charW, charH, fontSize;
 
 function measureFont(size) {
   fontSize = size;
-  outCtx.font = `${isMobile ? 'bold ' : ''}${fontSize}px ${FONT_FAMILY}`;
+  outCtx.font = `bold ${fontSize}px ${FONT_FAMILY}`;
   charW = outCtx.measureText('M').width;
   charH = fontSize * 0.7;
 }
@@ -360,7 +360,7 @@ function render() {
 
   outCtx.fillStyle = '#0a0a0f';
   outCtx.fillRect(0, 0, screenW, screenH);
-  outCtx.font = `${isMobile ? 'bold ' : ''}${fontSize}px ${FONT_FAMILY}`;
+  outCtx.font = `bold ${fontSize}px ${FONT_FAMILY}`;
   outCtx.textBaseline = 'top';
 
   const offsetX = (screenW - w * charW) / 2;
