@@ -17,7 +17,4 @@ Open http://localhost:3000
 
 ## Controls
 
-- **H** — toggle resolution slider
-- **C** — switch front/back camera
-- **Pinch** (mobile) — change ASCII resolution
-- **Double-tap** (mobile) — switch camera
+scroll to change res
