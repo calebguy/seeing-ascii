@@ -41,42 +41,7 @@
       height: 100vh;
     }
 
-    #slider-bar {
-      position: fixed;
-      bottom: 0;
-      left: 0;
-      width: 100%;
-      z-index: 10;
-      opacity: 0;
-      transition: opacity 0.3s;
-      cursor: pointer;
-    }
-
-    #ascii-container:hover #slider-bar:not(.hidden) {
-      opacity: 1;
-    }
-
-    #slider-bar.hidden {
-      opacity: 0 !important;
-      pointer-events: none;
-    }
-
-    @media (max-width: 768px), (hover: none) {
-      #slider-bar {
-        display: none;
-      }
-    }
-
-    #slider-canvas {
-      width: 100%;
-      height: 80px;
-      cursor: pointer;
-      display: block;
-      border-top: 1px solid #222;
-    }
-
-
-    #fps-counter {
+#fps-counter {
       position: fixed;
       top: 8px;
       right: 12px;
@@ -85,22 +50,7 @@
       z-index: 10;
     }
 
-    #hint {
-      position: absolute;
-      bottom: 4px;
-      left: 12px;
-      font-size: 1.1rem;
-      color: white;
-      z-index: 11;
-      font-family: monospace;
-      pointer-events: none;
-    }
-
-    @media (max-width: 768px), (hover: none) {
-      #hint { display: none; }
-    }
-
-    #screenshot-btn {
+#screenshot-btn {
       display: none;
       position: fixed;
       z-index: 20;
@@ -120,9 +70,7 @@
       background: rgba(255,255,255,0.4);
     }
 
-    @media (max-width: 768px), (hover: none) {
-      #screenshot-btn { display: block; }
-    }
+    #screenshot-btn { display: block; }
 
     video { display: none; }
     #sample-canvas { display: none; }
@@ -132,11 +80,7 @@
 
 <div id="ascii-container">
   <canvas id="ascii-canvas"></canvas>
-  <div id="slider-bar">
-    <canvas id="slider-canvas"></canvas>
-    <div id="hint">h to toggle</div>
-  </div>
-  <div id="fps-counter"></div>
+<div id="fps-counter"></div>
   <button id="screenshot-btn" aria-label="Take screenshot"></button>
 </div>
 
@@ -152,22 +96,13 @@ const sampleCtx = sampleCanvas.getContext('2d', { willReadFrequently: true });
 const asciiCanvas = document.getElementById('ascii-canvas');
 const outCtx = asciiCanvas.getContext('2d');
 const fpsCounter = document.getElementById('fps-counter');
-const hint = document.getElementById('hint');
-const sliderCanvas = document.getElementById('slider-canvas');
-const sliderCtx = sliderCanvas.getContext('2d');
 
 const isMobile = window.matchMedia('(max-width: 768px), (hover: none)').matches;
 let cols = isMobile ? 60 : 80;
 let mirror = true;
 let running = false;
-let sliderHidden = isMobile;
-let sliderDragging = false;
 let frameCount = 0;
 let lastFpsTime = performance.now();
-
-if (isMobile) {
-  document.getElementById('slider-bar').classList.add('hidden');
-}
 
 const FONT_FAMILY = 'Courier New, Courier, monospace';
 let charW, charH, fontSize;
@@ -179,143 +114,15 @@ function measureFont(size) {
   charH = fontSize * 0.7;
 }
 
-// Canvas slider
-const sliderSampleCanvas = document.createElement('canvas');
-const sliderSampleCtx = sliderSampleCanvas.getContext('2d', { willReadFrequently: true });
-const sliderMin = 40;
-const sliderMax = isMobile ? 200 : 300;
-const STRIP_COUNT = 24;
+const colsMin = 40;
+const colsMax = isMobile ? 200 : 300;
 
-function xToCols(x, barW) {
-  return Math.round(sliderMin + Math.max(0, Math.min(1, x / barW)) * (sliderMax - sliderMin));
-}
-
-function colsToX(c, barW) {
-  return ((c - sliderMin) / (sliderMax - sliderMin)) * barW;
-}
-
-function renderSlider() {
-  if (!running || !video.videoWidth) return;
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  const videoAspect = vw / vh;
-
-  const barW = sliderCanvas.clientWidth * devicePixelRatio;
-  const barH = sliderCanvas.clientHeight * devicePixelRatio;
-  if (barW <= 0 || barH <= 0) return;
-
-  if (sliderCanvas.width !== barW || sliderCanvas.height !== barH) {
-    sliderCanvas.width = barW;
-    sliderCanvas.height = barH;
-  }
-
-  sliderCtx.fillStyle = '#0a0a0f';
-  sliderCtx.fillRect(0, 0, barW, barH);
-
-  const fullScreenW = window.innerWidth * devicePixelRatio;
-  const fullScreenH = window.innerHeight * devicePixelRatio;
-  const stripW = barW / STRIP_COUNT;
-
-  for (let s = 0; s < STRIP_COUNT; s++) {
-    const t = s / (STRIP_COUNT - 1);
-    const resCols = Math.round(sliderMin + t * (sliderMax - sliderMin));
-
-    const fs = Math.max(3, Math.floor(fullScreenW / resCols / 0.6));
-    sliderCtx.font = `${fs}px ${FONT_FAMILY}`;
-    const cw = sliderCtx.measureText('M').width;
-    const ch = fs * 0.7;
-    const cellAsp = cw / ch;
-
-    const stripLeft = Math.floor(s * stripW);
-    const stripRight = Math.floor((s + 1) * stripW);
-    const sw = stripRight - stripLeft;
-    const gridCols = Math.max(1, Math.ceil(sw / cw));
-    const gridRows = Math.max(1, Math.ceil(barH / ch));
-
-    const fullGridW = Math.ceil(fullScreenW / cw);
-    let fgW = fullGridW;
-    let fgH = Math.ceil(fullGridW * cellAsp / videoAspect);
-    if (fgH * ch < fullScreenH) {
-      fgH = Math.ceil(fullScreenH / ch);
-      fgW = Math.ceil(fgH * videoAspect / cellAsp);
-    }
-
-    const fullOffsetX = (fullScreenW - fgW * cw) / 2;
-    const fullOffsetY = (fullScreenH - fgH * ch) / 2;
-    const barTopScreen = fullScreenH - barH;
-
-    const startCol = Math.floor((stripLeft - fullOffsetX) / cw);
-    const startRow = Math.floor((barTopScreen - fullOffsetY) / ch);
-
-    const vidX0 = Math.max(0, startCol / fgW);
-    const vidY0 = Math.max(0, startRow / fgH);
-    const vidX1 = Math.min(1, (startCol + gridCols) / fgW);
-    const vidY1 = Math.min(1, (startRow + gridRows) / fgH);
-
-    sliderSampleCanvas.width = gridCols;
-    sliderSampleCanvas.height = gridRows;
-    if (mirror) {
-      sliderSampleCtx.translate(gridCols, 0);
-      sliderSampleCtx.scale(-1, 1);
-      sliderSampleCtx.drawImage(video,
-        (1 - vidX1) * vw, vidY0 * vh, (vidX1 - vidX0) * vw, (vidY1 - vidY0) * vh,
-        0, 0, gridCols, gridRows);
-      sliderSampleCtx.setTransform(1, 0, 0, 1, 0, 0);
-    } else {
-      sliderSampleCtx.drawImage(video,
-        vidX0 * vw, vidY0 * vh, (vidX1 - vidX0) * vw, (vidY1 - vidY0) * vh,
-        0, 0, gridCols, gridRows);
-    }
-
-    const imgData = sliderSampleCtx.getImageData(0, 0, gridCols, gridRows);
-    const data = imgData.data;
-    const len = charset.length;
-
-    sliderCtx.save();
-    sliderCtx.beginPath();
-    sliderCtx.rect(stripLeft, 0, sw, barH);
-    sliderCtx.clip();
-    sliderCtx.font = `${fs}px ${FONT_FAMILY}`;
-    sliderCtx.textBaseline = 'top';
-
-    for (let y = 0; y < gridRows; y++) {
-      const py = y * ch;
-      if (py > barH) break;
-      for (let x = 0; x < gridCols; x++) {
-        const px = stripLeft + x * cw;
-        if (px > stripRight) break;
-        const idx = (y * gridCols + x) * 4;
-        const r = data[idx], g = data[idx+1], b = data[idx+2];
-        const brightness = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        const ci = Math.floor(brightness * (len - 1));
-        const c = charset[ci];
-        if (c === ' ') continue;
-        sliderCtx.fillStyle = `rgb(${r},${g},${b})`;
-        sliderCtx.fillText(c, px, py);
-      }
-    }
-    sliderCtx.restore();
-  }
-
-  // Draw thumb line
-  const thumbX = colsToX(cols, barW);
-  sliderCtx.fillStyle = 'rgba(255,255,255,0.6)';
-  sliderCtx.fillRect(thumbX - 1, 0, 2, barH);
-}
-
-// Slider interaction
-function handleSliderInput(clientX) {
-  const rect = sliderCanvas.getBoundingClientRect();
-  const x = (clientX - rect.left) * devicePixelRatio;
-  cols = xToCols(x, sliderCanvas.width);
-}
-
-sliderCanvas.addEventListener('mousedown', (e) => { sliderDragging = true; handleSliderInput(e.clientX); });
-window.addEventListener('mousemove', (e) => { if (sliderDragging) handleSliderInput(e.clientX); });
-window.addEventListener('mouseup', () => { sliderDragging = false; });
-sliderCanvas.addEventListener('touchstart', (e) => { sliderDragging = true; handleSliderInput(e.touches[0].clientX); }, { passive: true });
-window.addEventListener('touchmove', (e) => { if (sliderDragging) handleSliderInput(e.touches[0].clientX); }, { passive: true });
-window.addEventListener('touchend', () => { sliderDragging = false; });
+// Scroll wheel to change resolution on desktop
+document.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const step = e.deltaY > 0 ? 5 : -5;
+  cols = Math.round(Math.max(colsMin, Math.min(colsMax, cols + step)));
+}, { passive: false });
 
 // Pinch to change resolution on mobile
 let pinchStartDist = 0;
@@ -339,18 +146,13 @@ document.addEventListener('touchmove', (e) => {
     e.preventDefault();
     const dist = getPinchDist(e.touches);
     const scale = dist / pinchStartDist;
-    cols = Math.round(Math.max(sliderMin, Math.min(sliderMax, pinchStartCols / scale)));
+    cols = Math.round(Math.max(colsMin, Math.min(colsMax, pinchStartCols / scale)));
   }
 }, { passive: false });
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'c' || e.key === 'C') {
     toggleCamera();
-  }
-  if (e.key === 'h' || e.key === 'H') {
-    sliderHidden = !sliderHidden;
-    document.getElementById('slider-bar').classList.toggle('hidden', sliderHidden);
-    hint.style.display = 'none';
   }
 });
 
@@ -396,7 +198,7 @@ document.addEventListener('touchend', (e) => {
     lastTap = 0;
     return;
   }
-  if (sliderDragging || e.touches.length > 0) return;
+  if (e.touches.length > 0) return;
   const now = Date.now();
   if (now - lastTap < 300) {
     e.preventDefault();
@@ -409,9 +211,10 @@ document.addEventListener('touchend', (e) => {
 
 const screenshotBtn = document.getElementById('screenshot-btn');
 
-// Position button initially (bottom-right)
-let btnX = window.innerWidth - 48 - 20;
-let btnY = window.innerHeight - 48 - 24;
+// Position button (restore from localStorage or default to bottom-right)
+const savedBtn = localStorage.getItem('screenshotBtnPos');
+let btnX = savedBtn ? JSON.parse(savedBtn).x : window.innerWidth - 48 - 20;
+let btnY = savedBtn ? JSON.parse(savedBtn).y : window.innerHeight - 48 - 24;
 screenshotBtn.style.left = btnX + 'px';
 screenshotBtn.style.top = btnY + 'px';
 
@@ -459,15 +262,46 @@ window.addEventListener('touchend', (e) => {
   }
   if (!found) {
     if (!btnDragged) takeScreenshot();
+    else localStorage.setItem('screenshotBtnPos', JSON.stringify({ x: btnX, y: btnY }));
     btnDragging = false;
     btnTouchId = null;
   }
 });
 
+screenshotBtn.addEventListener('mousedown', (e) => {
+  btnStartX = e.clientX;
+  btnStartY = e.clientY;
+  btnOrigX = btnX;
+  btnOrigY = btnY;
+  btnDragging = true;
+  btnDragged = false;
+  e.preventDefault();
+});
+
+window.addEventListener('mousemove', (e) => {
+  if (!btnDragging || btnTouchId !== null) return;
+  const dx = e.clientX - btnStartX;
+  const dy = e.clientY - btnStartY;
+  if (!btnDragged && Math.abs(dx) + Math.abs(dy) > 4) btnDragged = true;
+  if (btnDragged) {
+    btnX = Math.max(0, Math.min(window.innerWidth - 48, btnOrigX + dx));
+    btnY = Math.max(0, Math.min(window.innerHeight - 48, btnOrigY + dy));
+    screenshotBtn.style.left = btnX + 'px';
+    screenshotBtn.style.top = btnY + 'px';
+  }
+});
+
+window.addEventListener('mouseup', () => {
+  if (!btnDragging || btnTouchId !== null) return;
+  if (!btnDragged) takeScreenshot();
+  else localStorage.setItem('screenshotBtnPos', JSON.stringify({ x: btnX, y: btnY }));
+  btnDragging = false;
+});
+
 function takeScreenshot() {
   asciiCanvas.toBlob((blob) => {
     const file = new File([blob], 'seeing-ascii.png', { type: 'image/png' });
-    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+    if (isMobile && navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
       navigator.share({ files: [file] });
     } else {
       const a = document.createElement('a');
@@ -549,9 +383,6 @@ function render() {
       outCtx.fillText(ch, px, py);
     }
   }
-
-  // Render slider every frame
-  if (!sliderHidden) renderSlider();
 
   frameCount++;
   const now = performance.now();
