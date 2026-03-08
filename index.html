@@ -151,7 +151,7 @@ function measureFont(size) {
   fontSize = size;
   outCtx.font = `${fontSize}px ${FONT_FAMILY}`;
   charW = outCtx.measureText('M').width;
-  charH = fontSize;
+  charH = fontSize * 0.7;
 }
 
 // Canvas slider
@@ -198,7 +198,7 @@ function renderSlider() {
     const fs = Math.max(3, Math.floor(fullScreenW / resCols / 0.6));
     sliderCtx.font = `${fs}px ${FONT_FAMILY}`;
     const cw = sliderCtx.measureText('M').width;
-    const ch = fs;
+    const ch = fs * 0.7;
     const cellAsp = cw / ch;
 
     const stripLeft = Math.floor(s * stripW);
