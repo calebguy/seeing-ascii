@@ -16,69 +16,7 @@
   <meta name="twitter:title" content="seeing-ascii">
   <meta name="twitter:description" content="ascii all I see">
   <meta name="twitter:image" content="https://res.cloudinary.com/dm9gwanrg/image/upload/v1772926379/seeing-ascii-edited_c7hcwy.png">
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-
-    body {
-      background: #0a0a0f;
-      color: #c8c8d0;
-      font-family: monospace;
-      overflow: hidden;
-      height: 100dvh;
-      width: 100vw;
-      touch-action: none;
-    }
-
-    #ascii-container {
-      width: 100vw;
-      height: 100dvh;
-      position: relative;
-    }
-
-    #ascii-canvas {
-      display: block;
-      width: 100vw;
-      height: 100dvh;
-    }
-
-#fps-counter {
-      position: fixed;
-      top: 8px;
-      right: 12px;
-      font-size: 0.7rem;
-      color: #444;
-      z-index: 10;
-    }
-
-#screenshot-btn {
-      display: none;
-      position: fixed;
-      z-index: 20;
-      left: 50%;
-      bottom: 30px;
-      transform: translateX(-50%);
-      width: 52px;
-      height: 52px;
-      border-radius: 50%;
-      border: none;
-      background: white;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-      touch-action: none;
-      box-shadow: 0 0 0 3px rgba(0,0,0,0.1), 0 0 0 7px rgba(255,255,255,0.3);
-      transition: transform 0.1s ease;
-    }
-
-#screenshot-btn:active {
-      background: rgba(220,220,220,1);
-      transform: translateX(-50%) scale(0.92);
-    }
-
-    #screenshot-btn { display: block; }
-
-    video { display: none; }
-    #sample-canvas { display: none; }
-  </style>
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
 
@@ -86,6 +24,7 @@
   <canvas id="ascii-canvas"></canvas>
 <div id="fps-counter"></div>
   <button id="screenshot-btn" aria-label="Take screenshot"></button>
+  <button id="rotate-btn" aria-label="Rotate camera"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path></svg></button>
 </div>
 
 <video id="video" autoplay playsinline></video>
@@ -221,6 +160,14 @@ screenshotBtn.addEventListener('click', () => takeScreenshot());
 screenshotBtn.addEventListener('touchend', (e) => {
   e.preventDefault();
   takeScreenshot();
+});
+
+// Rotate camera button
+const rotateBtn = document.getElementById('rotate-btn');
+rotateBtn.addEventListener('click', () => toggleCamera());
+rotateBtn.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  toggleCamera();
 });
 
 function takeScreenshot() {
