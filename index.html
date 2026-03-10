@@ -27,6 +27,11 @@
   <button id="rotate-btn" aria-label="Rotate camera"><svg stroke="currentColor" fill="none" stroke-width="2" viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round" xmlns="http://www.w3.org/2000/svg"><path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"></path><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"></path></svg></button>
 </div>
 
+<div id="camera-prompt">
+  <p id="camera-prompt-text">accept camera perms for ascii ☉ ‿ ⚆</p>
+  <button id="retry-btn" style="display:none;">try again</button>
+</div>
+
 <video id="video" autoplay playsinline></video>
 <canvas id="sample-canvas"></canvas>
 
@@ -100,8 +105,16 @@ document.addEventListener('keydown', (e) => {
 });
 
 let facingMode = 'user';
+const cameraPrompt = document.getElementById('camera-prompt');
+const cameraPromptText = document.getElementById('camera-prompt-text');
+const retryBtn = document.getElementById('retry-btn');
+
+retryBtn.addEventListener('click', () => startCamera());
 
 async function startCamera() {
+  retryBtn.style.display = 'none';
+  cameraPromptText.textContent = 'accept camera perms for ascii ☉ ‿ ⚆';
+  cameraPrompt.style.display = 'flex';
   // Stop existing tracks
   if (video.srcObject) {
     video.srcObject.getTracks().forEach(t => t.stop());
@@ -113,12 +126,15 @@ async function startCamera() {
     video.srcObject = stream;
     await video.play();
     mirror = (facingMode === 'user');
+    cameraPrompt.style.display = 'none';
     if (!running) {
       running = true;
       requestAnimationFrame(render);
     }
   } catch (err) {
     console.error('Camera access denied:', err);
+    cameraPromptText.textContent = 'camera denied ☉ _ ⚆';
+    retryBtn.style.display = 'block';
   }
 }
 
